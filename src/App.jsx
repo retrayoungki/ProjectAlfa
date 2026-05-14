@@ -60,8 +60,8 @@ function AppContent() {
           
           if (data.projects && data.projects.length > 0) {
             const sanitizedProjects = data.projects.map(p => {
-              if (p.name === 'Meruya Residence' && !p.code) {
-                return { ...p, code: 'PRJ-2024-002' };
+              if (p.name === 'Tokyo Riverside Apartment' && !p.code) {
+                return { ...p, code: 'PRJ-2024-001' };
               }
               return p;
             });
@@ -75,7 +75,6 @@ function AppContent() {
 
           if (data.currentUser) setCurrentUser(data.currentUser);
         } else {
-          // Setup defaults if document doesn't exist
           setProjects([{ id: 1, name: 'Tokyo Riverside Apartment', client: 'Tokyo Dev', projectType: 'Residential', code: 'PRJ-2024-001', status: 'On Track', progress: 85, budget: '4200000000', billingType: 'Fixed', startDate: '2026-04-01', endDate: '2027-04-01', projectManager: 'Sarah Dorsey', icon: 'foundation', color: 'blue', milestones: [] }]);
           setSystemUsers([{ id: 'usr-admin', workerId: null, username: 'Admin', email: 'admin@projectalfa.com', password: 'password123', role: 'Admin', status: 'Active' }]);
         }
@@ -89,32 +88,11 @@ function AppContent() {
     loadData();
   }, []);
 
-  // Save to Firebase on state change (Only if loaded successfully and no errors)
-  const canSave = dataLoaded && !firebaseError;
-
   useEffect(() => {
-    if (canSave) {
-      setDoc(doc(db, 'appState', 'main'), { projects }, { merge: true }).catch(console.error);
+    if (dataLoaded && !firebaseError) {
+      setDoc(doc(db, 'appState', 'main'), { projects, workers, currentUser, systemUsers }, { merge: true }).catch(console.error);
     }
-  }, [projects, canSave]);
-
-  useEffect(() => {
-    if (canSave) {
-      setDoc(doc(db, 'appState', 'main'), { workers }, { merge: true }).catch(console.error);
-    }
-  }, [workers, canSave]);
-
-  useEffect(() => {
-    if (canSave) {
-      setDoc(doc(db, 'appState', 'main'), { currentUser }, { merge: true }).catch(console.error);
-    }
-  }, [currentUser, canSave]);
-
-  useEffect(() => {
-    if (canSave) {
-      setDoc(doc(db, 'appState', 'main'), { systemUsers }, { merge: true }).catch(console.error);
-    }
-  }, [systemUsers, canSave]);
+  }, [projects, workers, currentUser, systemUsers, dataLoaded, firebaseError]);
 
   if (!isAuthenticated) {
     return (
@@ -125,12 +103,12 @@ function AppContent() {
   }
 
   return (
-    <div className="bg-[#BCBCBC] font-body-md text-on-surface">
+    <div className="bg-[#BCBCBC] font-body-md text-on-surface min-h-screen">
       {firebaseError && (
         <div className="bg-red-500 text-white p-4 fixed top-0 left-0 w-full z-[100] font-bold shadow-lg flex items-center justify-between">
           <span>
             <span className="material-symbols-outlined mr-2 align-middle">error</span>
-            Firebase Connection Error: {firebaseError}. Pastikan Anda sudah mengaktifkan Firestore Database di Firebase Console!
+            Firebase Connection Error: {firebaseError}
           </span>
           <button onClick={() => setFirebaseError(null)} className="opacity-80 hover:opacity-100">
             <span className="material-symbols-outlined">close</span>
@@ -143,7 +121,7 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Dashboard projects={projects} setProjects={setProjects} workers={workers} currentUser={currentUser} />} />
           <Route path="/schedule" element={<Schedule projects={projects} />} />
-          <Route path="/budget" element={<Budget />} />
+          <Route path="/budget" element={<Budget projects={projects} currentUser={currentUser} />} />
           <Route path="/cost-management" element={<CostManagement projects={projects} currentUser={currentUser} />} />
           <Route path="/ahsp-library" element={<AHSPLibrary currentUser={currentUser} />} />
           <Route path="/settings" element={<Settings projects={projects} setProjects={setProjects} workers={workers} setWorkers={setWorkers} currentUser={currentUser} systemUsers={systemUsers} setSystemUsers={setSystemUsers} />} />

@@ -6,7 +6,23 @@ const InvoiceDocument = ({ invoice, projectData }) => {
   const formatCurrency = (v) => `Rp ${Number(v || 0).toLocaleString('id-ID')}`
 
   return (
-    <div className="bg-white p-12 w-[210mm] min-h-[297mm] mx-auto shadow-2xl print:shadow-none print:p-0 font-sans text-slate-800 border-t-[12px] border-[#00355f] flex flex-col box-border">
+    <div className="bg-white p-12 w-[210mm] min-h-[297mm] mx-auto shadow-2xl print:shadow-none print:p-0 font-sans text-slate-800 border-t-[12px] border-[#00355f] flex flex-col box-border relative">
+      {/* Watermark */}
+      {invoice.status !== 'Issued' && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-12deg] pointer-events-none z-10 opacity-[0.05] print:opacity-[0.05] whitespace-nowrap">
+          <div className="border-[20px] border-emerald-600 text-emerald-600 rounded-[60px] px-24 py-12 flex flex-col items-center">
+            <span className="text-[140px] font-black uppercase tracking-[0.2em]">
+              PAID
+            </span>
+            {invoice.status !== 'Lunas' && (
+              <span className="text-[60px] font-black uppercase tracking-[0.1em] -mt-4">
+                {invoice.status.replace(' Paid', '')}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="flex justify-between items-start mb-12">
         <div>
@@ -27,6 +43,10 @@ const InvoiceDocument = ({ invoice, projectData }) => {
           <div className="space-y-1">
             <p className="text-[10px] font-black text-[#00355f] uppercase tracking-widest border-b-2 border-slate-200 pb-1">Invoice No.</p>
             <p className="text-sm font-bold pt-1">{invoice.id.replace('INV-', 'INV/')}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-black text-[#00355f] uppercase tracking-widest border-b-2 border-slate-200 pb-1">Payment Stage</p>
+            <p className="text-sm font-bold pt-1">{invoice.stage}% Completion</p>
           </div>
         </div>
       </div>
@@ -57,29 +77,37 @@ const InvoiceDocument = ({ invoice, projectData }) => {
         <table className="w-full border-collapse mb-12">
           <thead>
             <tr className="bg-[#00355f] text-white">
-              <th className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wider border border-[#00355f]">Description</th>
-              <th className="px-4 py-2 text-center text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-24">Qty / Hr</th>
-              <th className="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-40">Unit Price / Rate</th>
-              <th className="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-40">Total</th>
+              <th className="px-4 py-2 text-center text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-12">No</th>
+              <th className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wider border border-[#00355f]">Scope of Work</th>
+              <th className="px-4 py-2 text-left text-[11px] font-bold uppercase tracking-wider border border-[#00355f]">Detail</th>
+              <th className="px-4 py-2 text-center text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-24">Unit</th>
+              <th className="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider border border-[#00355f] w-40">Price (Rp)</th>
             </tr>
           </thead>
           <tbody className="text-sm">
-            {/* Progress Section */}
-            <tr className="bg-slate-50">
-              <td colSpan="4" className="px-4 py-2 font-bold text-slate-400 border border-slate-200 italic">Progress Billing</td>
-            </tr>
-            <tr>
-              <td className="px-4 py-4 border border-slate-200">
-                <p className="font-bold">Progress Claim #{invoice.stage === 30 ? '1' : invoice.stage === 50 ? '2' : invoice.stage === 75 ? '3' : '4'}</p>
-                <p className="text-xs text-slate-500 mt-1">Completion progress reaching {invoice.stage}% of contract value.</p>
-              </td>
-              <td className="px-4 py-4 text-center border border-slate-200 font-medium">1.00</td>
-              <td className="px-4 py-4 text-right border border-slate-200 font-medium">{formatCurrency(invoice.amount)}</td>
-              <td className="px-4 py-4 text-right border border-slate-200 font-bold">{formatCurrency(invoice.amount)}</td>
-            </tr>
+            {invoice.items && invoice.items.length > 0 ? (
+              invoice.items.map((item, idx) => (
+                <tr key={idx}>
+                  <td className="px-4 py-4 text-center border border-slate-200">{idx + 1}</td>
+                  <td className="px-4 py-4 border border-slate-200 font-bold">{item.scope}</td>
+                  <td className="px-4 py-4 border border-slate-200 italic text-slate-500">{item.detail}</td>
+                  <td className="px-4 py-4 text-center border border-slate-200">{item.unit}</td>
+                  <td className="px-4 py-4 text-right border border-slate-200 font-bold">{formatCurrency(item.price)}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td className="px-4 py-4 text-center border border-slate-200">1</td>
+                <td className="px-4 py-4 border border-slate-200 font-bold">{invoice.scopeOfWork || `Progress Claim - Stage ${invoice.stage}%`}</td>
+                <td className="px-4 py-4 border border-slate-200 italic text-slate-500">Legacy Billing Data</td>
+                <td className="px-4 py-4 text-center border border-slate-200">{invoice.unit || '1.00'}</td>
+                <td className="px-4 py-4 text-right border border-slate-200 font-bold">{formatCurrency(invoice.price || invoice.amount)}</td>
+              </tr>
+            )}
             {/* Placeholder Rows to match design */}
-            {[1, 2, 3, 4, 5].map(i => (
+            {(!invoice.items || invoice.items.length < 5) && [1, 2, 3, 4, 5].slice(0, 5 - (invoice.items?.length || 1)).map(i => (
               <tr key={i} className="h-10">
+                <td className="px-4 py-2 border border-slate-200"></td>
                 <td className="px-4 py-2 border border-slate-200"></td>
                 <td className="px-4 py-2 border border-slate-200"></td>
                 <td className="px-4 py-2 border border-slate-200"></td>
@@ -87,9 +115,10 @@ const InvoiceDocument = ({ invoice, projectData }) => {
               </tr>
             ))}
             <tr className="bg-slate-50">
-              <td colSpan="4" className="px-4 py-2 font-bold text-slate-400 border border-slate-200 italic">Other</td>
+              <td colSpan="5" className="px-4 py-2 font-bold text-slate-400 border border-slate-200 italic">Other</td>
             </tr>
             <tr className="h-10">
+              <td className="px-4 py-2 border border-slate-200"></td>
               <td className="px-4 py-2 border border-slate-200"></td>
               <td className="px-4 py-2 border border-slate-200"></td>
               <td className="px-4 py-2 border border-slate-200"></td>
@@ -113,25 +142,33 @@ const InvoiceDocument = ({ invoice, projectData }) => {
           <div className="w-1/3">
             <div className="space-y-2">
               <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1">
-                <span>Subtotal</span>
+                <span>Invoice Amount</span>
                 <span>{formatCurrency(invoice.amount)}</span>
               </div>
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1">
-                <span>Discount</span>
-                <span>Rp 0</span>
-              </div>
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1">
-                <span>Tax Rate</span>
-                <span>0.00%</span>
-              </div>
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 pb-1">
-                <span>Total Tax</span>
-                <span>Rp 0</span>
-              </div>
+              
+              {/* Payment Status Logic */}
+              {invoice.status !== 'Issued' && (
+                <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-emerald-600 border-b border-slate-100 pb-1">
+                  <span>Amount Paid ({invoice.status.replace(' Paid', '')})</span>
+                  <span>{formatCurrency(
+                    invoice.status === '30% Paid' ? invoice.amount * 0.3 :
+                    invoice.status === '50% Paid' ? invoice.amount * 0.5 :
+                    invoice.status === '75% Paid' ? invoice.amount * 0.75 :
+                    invoice.amount
+                  )}</span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center mt-6">
                 <span className="text-sm font-black text-[#00355f] uppercase tracking-widest">Balance Due</span>
                 <div className="bg-blue-50 px-6 py-3 rounded text-xl font-black text-slate-900 shadow-inner">
-                  {formatCurrency(invoice.amount)}
+                  {formatCurrency(
+                    invoice.status === '30% Paid' ? invoice.amount * 0.7 :
+                    invoice.status === '50% Paid' ? invoice.amount * 0.5 :
+                    invoice.status === '75% Paid' ? invoice.amount * 0.25 :
+                    invoice.status === 'Lunas' ? 0 :
+                    invoice.amount
+                  )}
                 </div>
               </div>
             </div>

@@ -30,6 +30,20 @@ export const saveNotifications = (notifs) => {
   localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs))
 }
 
+/**
+ * Internal helper to push a new notification to the system.
+ */
+const createNotification = (data) => {
+  const notifs = getAllNotifications()
+  notifs.push({
+    id: `notif-${Date.now()}-${data.recipientId}-${Math.floor(Math.random() * 1000)}`,
+    read: false,
+    createdAt: new Date().toISOString(),
+    ...data
+  })
+  saveNotifications(notifs)
+}
+
 // ── PR Status Helpers ──────────────────────────────────────────────────────────
 
 /**
@@ -80,6 +94,8 @@ export const submitPR = (prData, submittedBy, systemUsers = []) => {
     status: 'Pending Approval',
     submittedAt: new Date().toISOString(),
     submittedBy: prData.requestedBy || submittedBy?.name || submittedBy?.username || 'System',
+    submittedById: submittedBy?.id,
+    submittedByRole: submittedBy?.role,
     approval1: null,  // { by, decision, comment, at }
     approval2: null,
   }
@@ -91,14 +107,12 @@ export const submitPR = (prData, submittedBy, systemUsers = []) => {
   savePRs(prs)
 
   // Create notifications for all Director + Senior PM users
-  const notifs = getAllNotifications()
   const approverUsers = systemUsers.filter(u =>
     APPROVER_ROLES.includes(u.role) && u.status === 'Active'
   )
 
   approverUsers.forEach(u => {
-    notifs.push({
-      id: `notif-${Date.now()}-${u.id}`,
+    createNotification({
       type: 'pr_submitted',
       prId: pr.refNo,
       prRef: pr.refNo,
@@ -108,12 +122,9 @@ export const submitPR = (prData, submittedBy, systemUsers = []) => {
       submittedBy: pr.submittedBy,
       recipientId: u.id,
       recipientRole: u.role,
-      read: false,
-      createdAt: new Date().toISOString(),
     })
   })
 
-  saveNotifications(notifs)
   return pr
 }
 
@@ -153,63 +164,56 @@ export const applyApproval = (prRef, approver, decision, comment = '', systemUse
 
   // If Approval 1 just happened and was Approved, notify Director-level users
   if (level === 1 && decision === 'Approved') {
-    const notifs = getAllNotifications()
     const directors = systemUsers.filter(u =>
       u.role === ROLES.DIRECTOR && u.status === 'Active'
     )
     directors.forEach(u => {
-      // Only add if not already notified
-      const alreadyNotified = notifs.some(
-        n => n.prId === prRef && n.recipientId === u.id && n.type === 'pr_approval1'
-      )
-      if (!alreadyNotified) {
-        notifs.push({
-          id: `notif-${Date.now()}-${u.id}`,
-          type: 'pr_approval1',
-          prId: prRef,
-          prRef,
-          vendor: pr.vendor,
-          project: pr.project,
-          total: pr.total,
-          submittedBy: pr.submittedBy,
-          recipientId: u.id,
-          recipientRole: u.role,
-          read: false,
-          createdAt: new Date().toISOString(),
-        })
-      }
+      createNotification({
+        type: 'pr_approval1',
+        prId: prRef,
+        prRef,
+        vendor: pr.vendor,
+        project: pr.project,
+        total: pr.total,
+        submittedBy: pr.submittedBy,
+        recipientId: u.id,
+        recipientRole: u.role,
+      })
     })
-    saveNotifications(notifs)
   }
 
   // If Approval 2 just happened and was Approved (Final), notify Admin users for payment
   if (level === 2 && decision === 'Approved') {
-    const notifs = getAllNotifications()
     const admins = systemUsers.filter(u =>
       u.role === ROLES.ADMIN && u.status === 'Active'
     )
     admins.forEach(u => {
-      const alreadyNotified = notifs.some(
-        n => n.prId === prRef && n.recipientId === u.id && n.type === 'pr_ready_for_payment'
-      )
-      if (!alreadyNotified) {
-        notifs.push({
-          id: `notif-${Date.now()}-${u.id}`,
-          type: 'pr_ready_for_payment',
-          prId: prRef,
-          prRef,
-          vendor: pr.vendor,
-          project: pr.project,
-          total: pr.total,
-          submittedBy: pr.submittedBy,
-          recipientId: u.id,
-          recipientRole: u.role,
-          read: false,
-          createdAt: new Date().toISOString(),
-        })
-      }
+      createNotification({
+        type: 'pr_ready_for_payment',
+        prId: prRef,
+        prRef,
+        vendor: pr.vendor,
+        project: pr.project,
+        total: pr.total,
+        submittedBy: pr.submittedBy,
+        recipientId: u.id,
+        recipientRole: u.role,
+      })
     })
-    saveNotifications(notifs)
+  }
+
+  // ALWAYS notify the requester of status updates
+  if (pr.submittedById) {
+    createNotification({
+      type: 'pr_status_update',
+      prId: prRef,
+      prRef,
+      status: pr.status,
+      decision,
+      comment,
+      recipientId: pr.submittedById,
+      recipientRole: pr.submittedByRole,
+    })
   }
 
   return pr
@@ -241,6 +245,19 @@ export const applyPayment = (prRef, admin, notes = '') => {
   }
   pr.status = computeStatus(pr)
   savePRs(prs)
+
+  // Notify requester of payment
+  if (pr.submittedById) {
+    createNotification({
+      type: 'pr_paid',
+      prId: prRef,
+      prRef,
+      status: 'Paid',
+      recipientId: pr.submittedById,
+      recipientRole: pr.submittedByRole,
+    })
+  }
+
   return pr
 }
 
@@ -337,3 +354,28 @@ const markRelatedNotifsRead = (prRef, userId) => {
   )
   saveNotifications(updated)
 }
+/**
+ * Get total spending (PR + CR) for a project.
+ * Excludes rejected requests.
+ */
+export const getProjectSpending = (projectName) => {
+  const prs = getAllPRs().filter(p => p.project === projectName)
+  const totalSpent = prs.reduce((acc, pr) => {
+    // Check both approval levels for rejection
+    const isRejected = pr.approval1?.decision === 'Rejected' || pr.approval2?.decision === 'Rejected'
+    if (isRejected) return acc
+    return acc + (pr.total || 0)
+  }, 0)
+  return totalSpent
+}
+
+export const deletePR = (refNo) => {
+  const prs = getAllPRs()
+  const filtered = prs.filter(p => p.refNo !== refNo)
+  if (prs.length !== filtered.length) {
+    savePRs(filtered)
+    return true
+  }
+  return false
+}
+

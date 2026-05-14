@@ -1,17 +1,44 @@
 import React, { useState, useEffect } from 'react'
-import { getAllInvoices, submitInvoice, getNextInvoiceStage } from '../utils/invoiceService'
+import { getAllInvoices, submitInvoice, updateInvoiceStatus, deleteInvoice } from '../utils/invoiceService'
+import { canViewAll } from '../utils/rbac'
 import InvoiceDocument from '../components/InvoiceDocument'
 
+const SCOPE_OPTIONS = [
+  'Ceiling', 'Wall', 'Flooring', 'Electrical', 'Plumbing', 
+  'Finishing', 'Furniture', 'Signage', 'Others'
+]
+
 const Invoice = ({ projects = [], currentUser }) => {
+  const isAuthorized = canViewAll(currentUser?.role)
   const [invoices, setInvoices] = useState([])
   const [view, setView] = useState('list') // 'list' or 'create'
   const [viewingInvoice, setViewingInvoice] = useState(null)
+  const [editingId, setEditingId] = useState(null)
   
   // Creation States
   const [selectedProject, setSelectedProject] = useState('')
-  const [nextStage, setNextStage] = useState(null)
+  const [selectedStage, setSelectedStage] = useState(30)
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  
+  // Billing Items Table
+  const [items, setItems] = useState([
+    { id: `item-${Date.now()}`, scope: '', detail: '', unit: '', price: 0 }
+  ])
+
+  const handleItemChange = (id, field, value) => {
+    setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item))
+  }
+
+  const addItem = () => {
+    setItems([...items, { id: `item-${Date.now()}`, scope: '', detail: '', unit: '', price: 0 }])
+  }
+
+  const removeItem = (id) => {
+    if (items.length > 1) {
+      setItems(items.filter(item => item.id !== id))
+    }
+  }
 
   useEffect(() => {
     setInvoices(getAllInvoices())
@@ -19,11 +46,17 @@ const Invoice = ({ projects = [], currentUser }) => {
 
   useEffect(() => {
     if (selectedProject) {
-      setNextStage(getNextInvoiceStage(selectedProject))
-    } else {
-      setNextStage(null)
+      // Default to 30% for any new project selected, 
+      // but don't force it based on project history as per user request
+      if (!editingId) setSelectedStage(30)
     }
   }, [selectedProject])
+
+  useEffect(() => {
+    const total = items.reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0)
+    setAmount(total.toString())
+  }, [items])
+
 
   const handleAmountChange = (e) => {
     const rawValue = e.target.value.replace(/\D/g, '')
@@ -34,28 +67,77 @@ const Invoice = ({ projects = [], currentUser }) => {
     if (!val) return ''
     return Number(val).toLocaleString('id-ID')
   }
+  const handleEdit = (inv) => {
+    setEditingId(inv.id)
+    setSelectedProject(inv.project)
+    setDate(inv.date)
+    setItems(inv.items || [{ id: `item-${Date.now()}`, scope: '', detail: '', unit: '', price: 0 }])
+    setAmount(inv.amount.toString())
+    setSelectedStage(inv.stage || 30)
+    setView('create')
+  }
+
+  const handleDelete = (id) => {
+    if (window.confirm('Hapus invoice ini secara permanen?')) {
+      deleteInvoice(id)
+      setInvoices(getAllInvoices())
+    }
+  }
 
   const handleCreate = (e) => {
     e.preventDefault()
-    if (!selectedProject || !nextStage || !amount) return
+    if (!selectedProject || !selectedStage || !amount) return
+
 
     const newInv = {
       project: selectedProject,
-      stage: nextStage,
+      stage: selectedStage,
       amount: parseFloat(amount),
       date,
-      status: 'Issued'
+      status: 'Issued',
+      items
     }
 
-    submitInvoice(newInv)
+    if (editingId) {
+      const invs = getAllInvoices()
+      const idx = invs.findIndex(i => i.id === editingId)
+      if (idx !== -1) {
+        invs[idx] = { ...invs[idx], ...newInv }
+        localStorage.setItem('alfa_invoices', JSON.stringify(invs))
+      }
+    } else {
+      submitInvoice(newInv)
+    }
+
     setInvoices(getAllInvoices())
     setView('list')
+    setEditingId(null)
     setSelectedProject('')
     setAmount('')
-    setNextStage(null)
+    setSelectedStage(30)
+    setItems([{ id: `item-${Date.now()}`, scope: '', detail: '', unit: '', price: 0 }])
   }
 
   const formatCurrency = (v) => `Rp ${Number(v || 0).toLocaleString('id-ID')}`
+
+  const PAYMENT_STAGES = ['Issued', '30% Paid', '50% Paid', '75% Paid', 'Lunas']
+
+  const handleUpdateStatus = (invId, newStatus) => {
+    if (updateInvoiceStatus(invId, newStatus)) {
+      setInvoices(getAllInvoices())
+    }
+  }
+
+  const totalProjectValue = projects.reduce((acc, p) => acc + (Number(p.budget) || 0), 0)
+  const totalPaid = invoices.reduce((acc, i) => {
+    if (i.status === '30% Paid') return acc + (i.amount * 0.3)
+    if (i.status === '50% Paid') return acc + (i.amount * 0.5)
+    if (i.status === '75% Paid') return acc + (i.amount * 0.75)
+    if (i.status === 'Lunas') return acc + i.amount
+    return acc
+  }, 0)
+
+
 
   // ── CREATE VIEW (Document Style) ──
   if (view === 'create') {
@@ -137,7 +219,6 @@ const Invoice = ({ projects = [], currentUser }) => {
 
             {/* Progress Visualization Section */}
             <div className="space-y-8">
-              <div className="flex justify-between items-end">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 bg-primary/10 text-primary rounded flex items-center justify-center">
                     <span className="material-symbols-outlined text-sm font-black">analytics</span>
@@ -146,40 +227,36 @@ const Invoice = ({ projects = [], currentUser }) => {
                 </div>
                 {selectedProject && (
                   <p className="text-[10px] font-black text-primary uppercase tracking-widest">
-                    Next Required Stage: <span className="bg-primary text-white px-3 py-1 rounded-full ml-1">{nextStage || 'COMPLETED'}%</span>
+                    Selected Stage: <span className="bg-primary text-white px-3 py-1 rounded-full ml-1">{selectedStage}%</span>
                   </p>
                 )}
-              </div>
 
               <div className="grid grid-cols-4 gap-6">
                 {[30, 50, 75, 100].map(s => {
-                  const isNext = nextStage === s;
-                  const isPast = selectedProject && nextStage !== null && s < nextStage;
-                  const isFuture = selectedProject && (nextStage === null || s > nextStage);
+                  const isSelected = selectedStage === s;
                   
                   return (
                     <div 
                       key={s}
-                      className={`relative flex flex-col p-8 rounded-3xl border-2 transition-all duration-300 ${
-                        isNext 
+                      onClick={() => setSelectedStage(s)}
+                      className={`relative flex flex-col p-8 rounded-3xl border-2 transition-all duration-300 cursor-pointer ${
+                        isSelected 
                           ? 'bg-white border-primary shadow-2xl shadow-primary/20 -translate-y-2' 
-                          : isPast
-                            ? 'bg-green-50 border-green-100 opacity-60'
-                            : 'bg-slate-50 border-slate-100 opacity-40 grayscale'
+                          : 'bg-slate-50 border-slate-100 hover:border-primary/30 hover:bg-white/50'
                       }`}
                     >
-                      {isNext && (
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-[0.2em] shadow-lg">
-                          Next Claim
+                      {isSelected && (
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-[0.2em] shadow-lg animate-in fade-in zoom-in duration-300">
+                          Selected
                         </div>
                       )}
                       <div className="flex justify-between items-center mb-6">
-                        <span className={`text-2xl font-black ${isNext ? 'text-primary' : isPast ? 'text-green-600' : 'text-slate-400'}`}>{s}%</span>
-                        <span className="material-symbols-outlined text-slate-300">
-                          {isPast ? 'check_circle' : isNext ? 'pending' : 'lock'}
+                        <span className={`text-2xl font-black ${isSelected ? 'text-primary' : 'text-slate-400'}`}>{s}%</span>
+                        <span className={`material-symbols-outlined ${isSelected ? 'text-primary' : 'text-slate-300'}`}>
+                          {isSelected ? 'check_circle' : 'radio_button_unchecked'}
                         </span>
                       </div>
-                      <p className={`text-[10px] font-black uppercase tracking-widest ${isNext ? 'text-slate-900' : 'text-slate-400'}`}>
+                      <p className={`text-[10px] font-black uppercase tracking-widest ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
                         {s === 100 ? 'Final Retention' : 'Progress Payment'}
                       </p>
                     </div>
@@ -193,6 +270,92 @@ const Invoice = ({ projects = [], currentUser }) => {
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest italic">Please select a project above to unlock billing stages</p>
                 </div>
               )}
+            </div>
+
+            {/* Billing Items Table Section */}
+            <div className="bg-slate-50 border border-slate-200 rounded-[32px] overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100/50">
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-16 text-center">No.</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Scope of Work</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Detail</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Unit</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-48 text-right">Price (Rp)</th>
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-16"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/50">
+                  {items.map((item, index) => (
+                    <tr key={item.id} className="group hover:bg-white transition-colors">
+                      <td className="px-6 py-4 text-center text-xs font-black text-slate-400">{index + 1}</td>
+                      <td className="px-6 py-4">
+                        <select 
+                          className="w-full bg-transparent border-none outline-none text-sm font-bold text-slate-900 cursor-pointer appearance-none hover:text-primary transition-colors"
+                          value={item.scope}
+                          onChange={e => handleItemChange(item.id, 'scope', e.target.value)}
+                        >
+                          <option value="">Select Scope...</option>
+                          {SCOPE_OPTIONS.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text"
+                          placeholder="Detail description..."
+                          className="w-full bg-transparent border-none outline-none text-sm font-medium text-slate-500 placeholder:text-slate-300"
+                          value={item.detail}
+                          onChange={e => handleItemChange(item.id, 'detail', e.target.value)}
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text"
+                          placeholder="Unit"
+                          className="w-full bg-transparent border-none outline-none text-sm font-bold text-slate-700 text-center placeholder:text-slate-300"
+                          value={item.unit}
+                          onChange={e => handleItemChange(item.id, 'unit', e.target.value)}
+                        />
+                      </td>
+                      <td className="px-6 py-4">
+                        <input 
+                          type="text"
+                          placeholder="0"
+                          className="w-full bg-transparent border-none outline-none text-sm font-black text-slate-900 text-right tabular-nums placeholder:text-slate-300"
+                          value={item.price ? Number(item.price).toLocaleString('id-ID') : ''}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/\D/g, '')
+                            handleItemChange(item.id, 'price', raw === '' ? 0 : parseFloat(raw))
+                          }}
+                        />
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {items.length > 1 && (
+                          <button 
+                            onClick={() => removeItem(item.id)}
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:bg-red-50 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan="6" className="px-6 py-4">
+                      <button 
+                        onClick={addItem}
+                        className="flex items-center gap-2 text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:brightness-90 transition-all"
+                      >
+                        <span className="material-symbols-outlined text-sm">add_circle</span>
+                        Add Line Item
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             {/* Billing Amount Section (The "Card") */}
@@ -213,7 +376,6 @@ const Invoice = ({ projects = [], currentUser }) => {
                   value={formatDisplayAmount(amount)}
                   onChange={handleAmountChange}
                   required
-                  disabled={!nextStage}
                 />
               </div>
 
@@ -226,7 +388,7 @@ const Invoice = ({ projects = [], currentUser }) => {
                   <span className="w-1.5 h-1.5 bg-slate-200 rounded-full"></span>
                   <span className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-sm">flag</span>
-                    Claim Stage: {nextStage}%
+                    Claim Stage: {selectedStage}%
                   </span>
                 </div>
               )}
@@ -243,7 +405,6 @@ const Invoice = ({ projects = [], currentUser }) => {
               </button>
               <button 
                 type="submit"
-                disabled={!nextStage}
                 className="bg-primary text-white px-12 py-6 rounded-[24px] font-black uppercase tracking-widest text-sm shadow-2xl shadow-primary/30 hover:brightness-110 hover:-translate-y-1 active:translate-y-0 transition-all flex items-center gap-4 disabled:opacity-20 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
               >
                 <span className="material-symbols-outlined">send_and_archive</span>
@@ -276,7 +437,13 @@ const Invoice = ({ projects = [], currentUser }) => {
           </p>
         </div>
         <button 
-          onClick={() => setView('create')}
+          onClick={() => {
+            setEditingId(null)
+            setSelectedProject('')
+            setAmount('')
+            setItems([{ id: `item-${Date.now()}`, scope: '', detail: '', unit: '', price: 0 }])
+            setView('create')
+          }}
           className="flex items-center gap-3 bg-primary text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl hover:brightness-110 hover:-translate-y-1 active:translate-y-0 transition-all group"
         >
           <span className="material-symbols-outlined text-lg group-hover:rotate-90 transition-transform duration-300">add</span>
@@ -291,29 +458,29 @@ const Invoice = ({ projects = [], currentUser }) => {
             <span className="material-symbols-outlined text-3xl">receipt</span>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Invoices</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Invoices Issued</p>
             <p className="text-2xl font-black text-slate-900">{invoices.length}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-6">
           <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-            <span className="material-symbols-outlined text-3xl">payments</span>
+            <span className="material-symbols-outlined text-3xl">account_balance_wallet</span>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Billed Amount</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Project Value</p>
             <p className="text-2xl font-black text-slate-900">
-              {formatCurrency(invoices.reduce((acc, inv) => acc + inv.amount, 0))}
+              {formatCurrency(totalProjectValue)}
             </p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center gap-6">
           <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
-            <span className="material-symbols-outlined text-3xl">hourglass_empty</span>
+            <span className="material-symbols-outlined text-3xl">verified</span>
           </div>
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Active Projects</p>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Payments Received</p>
             <p className="text-2xl font-black text-slate-900">
-              {new Set(invoices.map(i => i.project)).size}
+              {formatCurrency(totalPaid)}
             </p>
           </div>
         </div>
@@ -356,16 +523,55 @@ const Invoice = ({ projects = [], currentUser }) => {
                   <td className="px-8 py-6 text-right font-black text-slate-700 tracking-tight">{formatCurrency(inv.amount)}</td>
                   <td className="px-8 py-6 text-center text-slate-500 font-bold text-xs">{inv.date}</td>
                   <td className="px-8 py-6 text-center">
-                    <span className="bg-green-100 text-green-700 px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border border-green-200">{inv.status}</span>
+                    {isAuthorized ? (
+                      <select 
+                        onChange={(e) => handleUpdateStatus(inv.id, e.target.value)}
+                        value={inv.status}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border outline-none cursor-pointer transition-all ${
+                          inv.status === 'Lunas' 
+                            ? 'bg-green-100 text-green-700 border-green-200' 
+                            : 'bg-amber-100 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        {PAYMENT_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ) : (
+                      <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
+                        inv.status === 'Lunas' 
+                          ? 'bg-green-100 text-green-700 border-green-200' 
+                          : 'bg-amber-100 text-amber-700 border-amber-200'
+                      }`}>
+                        {inv.status}
+                      </span>
+                    )}
                   </td>
                   <td className="px-8 py-6 text-right">
-                    <button 
-                      onClick={() => setViewingInvoice(inv)}
-                      className="inline-flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:brightness-125 transition-all shadow-md"
-                    >
-                      <span className="material-symbols-outlined text-sm">visibility</span>
-                      View
-                    </button>
+                      <button 
+                        onClick={() => setViewingInvoice(inv)}
+                        className="inline-flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:brightness-125 transition-all shadow-md"
+                      >
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        View
+                      </button>
+
+                      {isAuthorized && (
+                        <>
+                          <button 
+                            onClick={() => handleEdit(inv)}
+                            className="p-2 ml-2 text-slate-400 hover:text-primary hover:bg-slate-100 rounded-lg transition-all"
+                            title="Edit Invoice"
+                          >
+                            <span className="material-symbols-outlined text-sm">edit</span>
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(inv.id)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Delete Invoice"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        </>
+                      )}
                   </td>
                 </tr>
               ))

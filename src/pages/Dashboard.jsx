@@ -1,9 +1,106 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AddProjectModal from '../components/AddProjectModal'
-import { getAllPRs, STATUS_STYLES } from '../utils/prService'
+import { getAllPRs, STATUS_STYLES, getProjectSpending } from '../utils/prService'
 import { canApprove, canViewAll } from '../utils/rbac'
 
+// ── Sub-Components ──────────────────────────────────────────────────────────
+
+/**
+ * Vertical Bar Chart showing Budget vs Spending for each project.
+ */
+const FinancialOverviewChart = ({ projects, getProjectSpending, formatCurrency }) => {
+  if (!projects || projects.length === 0) {
+    return (
+      <div className="mb-lg bg-white border border-slate-200 rounded-lg shadow-sm p-lg py-16 text-center opacity-20">
+        <span className="material-symbols-outlined text-4xl mb-2">bar_chart</span>
+        <p className="text-xs font-bold uppercase tracking-widest">No projects to display</p>
+      </div>
+    )
+  }
+
+  const chartData = projects.slice(0, 8).map(p => ({
+    ...p,
+    spent: getProjectSpending(p.name),
+    budgetNum: Number(p.budget) || 0
+  }))
+  
+  const maxVal = Math.max(...chartData.map(d => Math.max(d.spent, d.budgetNum)), 1)
+
+  return (
+    <div className="mb-lg bg-white border border-slate-200 rounded-lg shadow-sm p-lg">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="p-1.5 bg-blue-50 rounded">
+          <span className="material-symbols-outlined text-blue-500 text-[20px]">leaderboard</span>
+        </div>
+        <div>
+          <h4 className="font-headline-md text-primary uppercase tracking-tight">Project Budget vs Spending</h4>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Vertical comparison of contract budget and total approved spending</p>
+        </div>
+      </div>
+
+      <div className="flex items-end justify-around gap-4 h-64 border-b border-slate-100 pb-2 overflow-x-auto custom-scrollbar">
+        {chartData.map(d => {
+          const spentHeight = (d.spent / maxVal) * 100
+          const budgetHeight = (d.budgetNum / maxVal) * 100
+          const spentPercent = d.budgetNum > 0 ? (d.spent / d.budgetNum) * 100 : 0
+          
+          return (
+            <div key={d.id} className="flex flex-col items-center flex-1 min-w-[100px] group">
+              <div className="relative w-full h-48 flex items-end justify-center gap-2 mb-3 px-2">
+                {/* Tooltip on hover */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-slate-800 text-white text-[9px] p-2 rounded opacity-0 group-hover:opacity-100 transition-all duration-200 whitespace-nowrap z-10 pointer-events-none shadow-xl border border-slate-700">
+                  <p className="font-black border-b border-white/10 pb-1 mb-1 text-blue-300">{d.name}</p>
+                  <p>Budget: {formatCurrency(d.budgetNum)}</p>
+                  <p>Spent: {formatCurrency(d.spent)} ({spentPercent.toFixed(1)}%)</p>
+                </div>
+
+                {/* Budget Bar */}
+                <div 
+                  className="w-5 bg-[#00355f] rounded-t-sm transition-all duration-500 shadow-sm hover:brightness-110 cursor-help"
+                  style={{ height: `${budgetHeight}%` }}
+                ></div>
+                
+                {/* Spent Bar */}
+                <div 
+                  className="w-5 bg-orange-500 rounded-t-sm transition-all duration-700 delay-100 shadow-sm border border-orange-600 hover:brightness-110 cursor-help"
+                  style={{ height: `${spentHeight}%` }}
+                ></div>
+              </div>
+              
+              {/* Project Label */}
+              <div className="text-center overflow-hidden w-full px-1">
+                <p className="text-[10px] font-black text-[#00355f] truncate uppercase tracking-tighter mb-0.5" title={d.name}>
+                  {d.name}
+                </p>
+                <div className="flex items-center justify-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                  <p className="text-[9px] font-bold text-slate-400">
+                    {spentPercent.toFixed(0)}% Utilized
+                  </p>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      
+      {/* Legend */}
+      <div className="flex justify-center gap-8 mt-6">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-[#00355f] rounded-sm shadow-sm"></div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Contract Budget</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-orange-500 rounded-sm shadow-sm border border-orange-600"></div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Actual Spent (Approved)</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main Dashboard Component ────────────────────────────────────────────────
 const Dashboard = ({ projects, setProjects, workers, currentUser }) => {
   const navigate = useNavigate()
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false)
@@ -280,6 +377,12 @@ const Dashboard = ({ projects, setProjects, workers, currentUser }) => {
         </div>
       </div>
 
+      <FinancialOverviewChart 
+        projects={projects} 
+        getProjectSpending={getProjectSpending} 
+        formatCurrency={formatCurrency} 
+      />
+
       {/* ── Purchase Request Status Section ─────────────────────────────────── */}
       <div className="mb-lg bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
         <div className="px-lg py-md border-b border-slate-200 flex items-center justify-between">
@@ -392,42 +495,6 @@ const Dashboard = ({ projects, setProjects, workers, currentUser }) => {
         )}
       </div>
 
-      {/* Site Map Preview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-gutter">
-        <div className="md:col-span-2 relative h-64 bg-slate-200 rounded-lg overflow-hidden border border-slate-200 group">
-          <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: "url('https://lh3.googleusercontent.com/aida-public/AB6AXuCvl1I8AmfOqxTa9SG3KhI0TqUuNk7orexmYBWsOHdYGbgKK5j9YDr7CFm_p2MhvkNhXZH5Xzy6NQSt2ZBXJ_D1MiqZuoITsIkFOdX7FUEk1ZxLQtcSrsuBiLCnkIAAQzQsBjA6cXhs8LRAAQTUlt6SAmA3qlSh0M1X2cPX546jQqyx-eZL0ET08chqb5B8dSOND4G0oWp36dny2kjVjopoM-_sr1KbHmq4j8baEjC1XA5oioPuQk5gezujAd46D8EnhvHlIbyLoRw')" }}></div>
-          <div className="absolute inset-0 bg-primary/20 group-hover:bg-primary/10 transition-colors"></div>
-          <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded shadow-lg">
-            <p className="text-xs font-black text-primary flex items-center gap-1">
-              <span className="material-symbols-outlined text-[14px]">location_on</span>
-              LIVE SITE MAP: DOWNTOWN DISTRICT
-            </p>
-          </div>
-          <button className="absolute bottom-4 right-4 bg-primary text-white p-2 rounded-full shadow-xl hover:scale-110 active:scale-95 transition-all">
-            <span className="material-symbols-outlined">open_in_full</span>
-          </button>
-        </div>
-        <div className="bg-tertiary p-lg rounded-lg shadow-sm text-white flex flex-col justify-between">
-          <div>
-            <h4 className="font-headline-md mb-2">Weather Alert</h4>
-            <p className="text-blue-100 text-sm mb-4">High winds expected tomorrow (24/10) at Riverside Heights. Crane operations may be suspended.</p>
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-blue-200">Temp</span>
-                <span className="text-lg font-bold">14°C</span>
-              </div>
-              <div className="h-8 w-px bg-white/10"></div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-blue-200">Wind</span>
-                <span className="text-lg font-bold">32 km/h</span>
-              </div>
-            </div>
-          </div>
-          <button className="mt-4 py-2 bg-white/10 hover:bg-white/20 border border-white/20 rounded text-sm font-bold transition-colors">
-            Safety Protocols
-          </button>
-        </div>
-      </div>
 
       <AddProjectModal 
         isOpen={isAddProjectOpen} 

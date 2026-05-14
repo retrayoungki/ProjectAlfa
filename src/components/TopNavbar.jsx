@@ -134,6 +134,8 @@ const TopNavbar = ({ currentUser, setCurrentUser, systemUsers = [], workers = []
                               {notif.type === 'pr_submitted' && 'Approval PR Baru'}
                               {notif.type === 'pr_approval1' && 'PR Butuh Final Approval'}
                               {notif.type === 'pr_ready_for_payment' && 'PR Siap Bayar (Selesai Approval)'}
+                              {notif.type === 'pr_status_update' && `Status PR Update: ${notif.status || ''}`}
+                              {notif.type === 'pr_paid' && 'PR Telah Dibayarkan (PAID)'}
                               {(!notif.type.startsWith('pr_')) && 'Notifikasi Baru'}
                             </p>
                             <p className="text-[10px] text-slate-500 font-medium mt-0.5">
