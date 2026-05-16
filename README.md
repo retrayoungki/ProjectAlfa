@@ -1,16 +1,72 @@
-# React + Vite
+# PRO MAN - Enterprise Construction Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+PRO MAN is a modern, scalable project management and financial oversight application designed specifically for the construction and architecture industry. This application follows a robust SaaS architecture to handle complex workflows, cost estimations, scheduling, and internal communications.
 
-Currently, two official plugins are available:
+## 🚀 System Architecture
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+This project is structured as a monorepo, strictly separating frontend UI, backend services, database migrations, and documentation:
 
-## React Compiler
+- **/frontend**: React + Vite SPA, styled with Tailwind CSS. Follows clean architecture.
+- **/backend**: Reserved for future Node.js/Express API services or Edge Functions.
+- **/database**: Reserved for Supabase/PostgreSQL schemas, migrations, and seed data.
+- **/docs**: Comprehensive project documentation, SOPs, and deployment guides.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 💻 Tech Stack (Frontend)
 
-## Expanding the ESLint configuration
+- **Framework**: React 18
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS
+- **Routing**: React Router DOM
+- **Database / BaaS**: Firebase (Transitioning to Supabase)
+- **Icons**: Google Material Symbols
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 📁 Frontend Architecture (`/frontend/src`)
+
+The frontend strictly enforces a clean separation of concerns:
+
+- `components/`: Pure, reusable UI elements (Buttons, Modals, Tables).
+- `pages/`: Stateful container components representing full screens.
+- `layouts/`: Structural wrappers (e.g., `MainLayout`, `AuthLayout`).
+- `contexts/`: React Context providers for global state (`AuthContext`, `DataContext`).
+- `services/`: API abstractions and database interactions (No DB logic inside UI components!).
+- `hooks/`: Reusable React hooks.
+- `config/`: Application configuration (Routes, RBAC).
+- `types/`: JSDoc definitions for enhanced IDE support.
+
+## 🛠️ Local Development Setup
+
+### Prerequisites
+- Node.js (v18+)
+- npm or yarn
+
+### Installation
+1. Clone the repository
+2. Navigate to the frontend directory:
+   ```bash
+   cd frontend
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Copy the environment variables:
+   ```bash
+   cp .env.example .env
+   ```
+5. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+## 🔒 Role-Based Access Control (RBAC)
+
+The system enforces strict RBAC to ensure data security. Available roles:
+- **Admin**: Full system access, configuration, and user management.
+- **Director**: High-level financial oversight and executive reports.
+- **Senior Project Manager**: Multi-project oversight and final approvals.
+- **Project Manager**: Operational control over assigned projects.
+- **Finance**: Invoice, ledger, and cost engine access.
+
+## 🏗️ Deployment
+
+Production deployment is fully decoupled. The `/frontend` directory can be deployed directly to Vercel, Netlify, or Firebase Hosting. Database migrations in `/database` must be run sequentially against the production Supabase instance.
