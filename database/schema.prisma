@@ -1,0 +1,590 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
+}
+
+model Client {
+  id              String    @id @default(uuid())
+  companyName     String    @map("company_name")
+  shortName       String?   @map("short_name")
+  clientType      String    @default("other") @map("client_type") // retail | mall | office | industrial | government | other
+  picName         String?   @map("pic_name")
+  picPosition     String?   @map("pic_position")
+  picPhone        String?   @map("pic_phone")
+  picEmail        String?   @map("pic_email")
+  pic2Name        String?   @map("pic_2_name")
+  pic2Phone       String?   @map("pic_2_phone")
+  pic2Email       String?   @map("pic_2_email")
+  phone           String?
+  email           String?
+  address         String?
+  city            String?
+  province        String?
+  npwp            String?
+  bankName        String?   @map("bank_name")
+  bankAccount     String?   @map("bank_account")
+  bankAccountName String?   @map("bank_account_name")
+  notes           String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  // For backwards compatibility
+  name            String?
+  company         String?
+
+  projects        Project[]
+  invoices        Invoice[]
+
+  @@map("clients")
+}
+
+model Project {
+  id                 String     @id @default(uuid())
+  projectCode        String     @unique @map("project_code")
+  projectName        String     @map("project_name")
+  clientId           String?    @map("client_id")
+  client             Client?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  clientName         String?    @map("client_name")
+  status             String     @default("preparation") // preparation | execution | testing | handover | maintenance | completed | on_hold
+  contractValue      Float?     @default(0.0) @map("contract_value")
+  budget             Float?     @default(0.0)
+  budgetUsed         Float?     @default(0.0) @map("budget_used")
+  contractStartDate  DateTime?  @map("contract_start_date")
+  contractEndDate    DateTime?  @map("contract_end_date")
+  actualStartDate    DateTime?  @map("actual_start_date")
+  location           String?
+  projectType        String?    @map("project_type") // store | mall | office | renovation | other
+  assignedPm         String?    @map("assigned_pm")
+  assignedUser       User?      @relation("AssignedPM", fields: [assignedPm], references: [id], onDelete: SetNull)
+  totalTasks         Int?       @default(0) @map("total_tasks")
+  completedTasks     Int?       @default(0) @map("completed_tasks")
+  progressPlan       Float?     @default(0.0) @map("progress_plan")
+  progressActual     Float?     @default(0.0) @map("progress_actual")
+  retensiTotal       Float?     @default(0.0) @map("retensi_total")
+  retensiCair        Float?     @default(0.0) @map("retensi_cair")
+  scurveData         String?    @default("[]") @map("scurve_data")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @default(now()) @updatedAt @map("updated_at")
+  deletedAt          DateTime?  @map("deleted_at")
+  
+  // Relations
+  tasks              Task[]
+  expenses           Expense[]
+  invoices           Invoice[]
+  documents          Document[]
+  timesheets         Timesheet[]
+  materials          Material[]
+  discussionChannels DiscussionChannel[]
+  members            ProjectMember[]
+  milestones         ProjectMilestone[]
+  activityLogs       ProjectActivityLog[]
+  termins            ProjectTermin[]
+  divisions          ProjectDivision[]
+  weeklyProgress     ProjectWeeklyProgress[]
+  progressDetails    ProjectProgressDetail[]
+  projectTasks       ProjectTask[]
+  projectFolders     ProjectFolder[]
+  projectDocuments   ProjectDocument[]
+  calendarEvents     CalendarEvent[]
+
+  @@map("projects")
+}
+
+model User {
+  id               String              @id @default(uuid())
+  name             String
+  email            String              @unique
+  role             String              @default("DEVELOPER") // e.g. PROJECT_MANAGER, DEVELOPER, DESIGNER
+  department       String              @default("ENGINEERING")
+  password         String?
+  createdAt        DateTime            @default(now())
+  tasks                Task[]
+  timesheets           Timesheet[]         @relation("UserTimesheets")
+  approvedTimesheets   Timesheet[]         @relation("ApprovedTimesheets")
+  messages             DiscussionMessage[]
+  mentions         MessageMention[]
+  assignedProjects Project[]           @relation("AssignedPM")
+  projectMembers   ProjectMember[]
+  activityLogs     ProjectActivityLog[]
+  weeklyProgresses ProjectWeeklyProgress[]
+  projectTasksAssigned ProjectTask[] @relation("ProjectTaskAssignee")
+  projectTasksCreated  ProjectTask[] @relation("ProjectTaskCreator")
+  uploadedDocuments    ProjectDocument[] @relation("DocUploader")
+  calendarEventsCreated CalendarEvent[] @relation("CalendarEventCreator")
+}
+
+model ProjectMember {
+  id            String   @id @default(uuid())
+  projectId     String   @map("project_id")
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId        String   @map("user_id")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleInProject String   @map("role_in_project") // pm, site_manager, finance, drafter, mandor, subkon, other
+  joinedAt      DateTime @default(now()) @map("joined_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+model ProjectMilestone {
+  id            String    @id @default(uuid())
+  projectId     String    @map("project_id")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneName String    @map("milestone_name")
+  targetDate    DateTime? @map("target_date")
+  actualDate    DateTime? @map("actual_date")
+  status        String    @default("pending") // pending, in_progress, done
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@map("project_milestones")
+}
+
+model ProjectActivityLog {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName  String?  @map("user_name")
+  action    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("project_activity_logs")
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  status      String   @default("TODO") // "TODO", "IN_PROGRESS", "DONE"
+  priority    String   @default("MEDIUM") // "HIGH", "MEDIUM", "LOW"
+  assigneeId  String?
+  assignee    User?    @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  deadline    DateTime
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  category    String
+  amount      Float
+  date        DateTime @default(now())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique @default(uuid())
+  clientId      String?
+  client        Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  projectId     String?
+  project       Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  scopeOfWork   String?
+  date          DateTime @default(now())
+  dueDate       DateTime @default(now())
+  currency      String   @default("IDR")
+  paymentTerms  String?
+  subtotal      Float    @default(0.0)
+  taxRate       Float    @default(0.0)
+  taxAmount     Float    @default(0.0)
+  discount      Float    @default(0.0)
+  totalAmount   Float    @default(0.0)
+  status        String   @default("DRAFT") // "DRAFT", "PENDING", "SENT", "PAID", "OVERDUE", "CANCELLED"
+  attachmentUrl String?  
+  createdAt     DateTime @default(now())
+  items         InvoiceItem[]
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  qty         Float    @default(1.0)
+  unitPrice   Float    @default(0.0)
+  total       Float    @default(0.0)
+}
+
+model Document {
+  id         String   @id @default(uuid())
+  fileName   String
+  fileUrl    String
+  category   String   // e.g., "CONTRACT", "DESIGN", "REQUIREMENT"
+  uploadedAt DateTime @default(now())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Timesheet {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  user            User      @relation("UserTimesheets", fields: [userId], references: [id], onDelete: Cascade)
+  projectId       String?   @map("project_id")
+  project         Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workDate        DateTime  @map("work_date")
+  hoursRegular    Float     @default(0) @map("hours_regular")
+  hoursOvertime   Float     @default(0) @map("hours_overtime")
+  workType        String    @default("regular") @map("work_type")
+  description     String
+  status          String    @default("pending")
+  approvedBy      String?   @map("approved_by")
+  approver        User?     @relation("ApprovedTimesheets", fields: [approvedBy], references: [id], onDelete: SetNull)
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("timesheets")
+}
+
+model Material {
+  id                    String   @id @default(uuid())
+  projectId             String
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  // BASIC INFORMATION
+  code                  String   @unique
+  name                  String
+  category              String?
+  subCategory           String?
+  brand                 String?
+  manufacturer          String?
+  supplier              String?
+  countryOfOrigin       String?
+  sku                   String?
+
+  // SPECIFICATION DETAILS
+  color                 String?
+  finishType            String?
+  materialType          String?
+  grade                 String?
+  size                  String?
+  dimension             String?
+  thickness             Float?
+  length                Float?
+  width                 Float?
+  height                Float?
+  diameter              Float?
+  weight                Float?
+  volume                Float?
+  density               Float?
+  texture               String?
+  surfaceType           String?
+
+  // TECHNICAL SPECIFICATIONS
+  technicalSpecs        String?
+  performanceSpecs      String?
+  tolerance             String?
+  capacity              String?
+  loadRating            String?
+  pressureRating        String?
+  electricalRating      String?
+  fireResistance        String?
+  waterproofLevel       String?
+  temperatureResistance String?
+  durabilityRating      String?
+  certification         String?
+  complianceStandard    String?
+  warrantyInfo          String?
+
+  // PURCHASE & COSTING
+  unitPrice             Float    @default(0.0)
+  estimatedCost         Float    @default(0.0)
+  actualCost            Float    @default(0.0)
+  currency              String   @default("IDR")
+  tax                   Float    @default(0.0)
+  shippingCost          Float    @default(0.0)
+  vendorPriceComparison String?
+  lastPurchasePrice     Float    @default(0.0)
+  averageCost           Float    @default(0.0)
+  minimumStock          Float    @default(0.0)
+  reorderLevel          Float    @default(0.0)
+
+  // INVENTORY
+  unitType              String   @default("pcs")
+  currentStock          Float    @default(0.0)
+  reservedStock         Float    @default(0.0)
+  availableStock        Float    @default(0.0)
+  incomingStock         Float    @default(0.0)
+  damagedStock          Float    @default(0.0)
+  warehouseLocation     String?
+  rackPosition          String?
+
+  // PROJECT USAGE
+  allocatedScope        String?
+  assignedTask          String?
+  pic                   String?
+  usageQuantity         Float    @default(0.0)
+  remainingQuantity     Float    @default(0.0)
+  wastePercentage       Float    @default(0.0)
+  installationStatus    String   @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+
+  // APPROVAL & DOCUMENTATION
+  approvalStatus        String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedBy            String?
+  approvalDate          DateTime?
+  technicalDrawingUrl   String?
+  datasheetUrl          String?
+  safetySheetUrl        String?
+  installationGuideUrl  String?
+  productCatalogueUrl   String?
+  
+  // QUALITY CONTROL
+  qcStatus              String   @default("UNINSPECTED") // UNINSPECTED, PASSED, FAILED, CONDITIONAL
+  inspectionResult      String?
+  defectNotes           String?
+  rejectionNotes        String?
+  replacementStatus     String?
+  testingResult         String?
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  attachments           MaterialAttachment[]
+  history               MaterialHistory[]
+}
+
+model MaterialAttachment {
+  id         String   @id @default(uuid())
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileUrl    String
+  uploadedAt DateTime @default(now())
+}
+
+model MaterialHistory {
+  id          String   @id @default(uuid())
+  materialId  String
+  material    Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  action      String   // e.g., CREATED, UPDATED, STOCK_IN, STOCK_OUT, QC_PASSED
+  description String
+  userId      String?
+  createdAt   DateTime @default(now())
+}
+
+model DiscussionChannel {
+  id          String   @id @default(uuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  type        String   @default("PUBLIC") // PUBLIC, PRIVATE
+  isArchived  Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    DiscussionMessage[]
+}
+
+model DiscussionMessage {
+  id          String   @id @default(uuid())
+  channelId   String
+  channel     DiscussionChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String
+  type        String   @default("TEXT") // TEXT, FILE, VOICE, DECISION
+  isPinned    Boolean  @default(false)
+  threadId    String?  // Reference to parent message for replies
+  parentMessage DiscussionMessage? @relation("ThreadReplies", fields: [threadId], references: [id], onDelete: SetNull)
+  replies     DiscussionMessage[] @relation("ThreadReplies")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attachments MessageAttachment[]
+  mentions    MessageMention[]
+  links       MessageLink[]
+  decisionLog DecisionLog?
+}
+
+model MessageAttachment {
+  id          String   @id @default(uuid())
+  messageId   String
+  message     DiscussionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  fileName    String
+  fileUrl     String
+  fileType    String   // PDF, JPG, MP4, etc.
+  size        Int?     // bytes
+  uploadedAt  DateTime @default(now())
+}
+
+model MessageMention {
+  id          String   @id @default(uuid())
+  messageId   String
+  message     DiscussionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRead      Boolean  @default(false)
+}
+
+model MessageLink {
+  id          String   @id @default(uuid())
+  messageId   String
+  message     DiscussionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  entityType  String   // TASK, MATERIAL, ISSUE, INVOICE
+  entityId    String   // Target ID
+}
+
+model DecisionLog {
+  id          String   @id @default(uuid())
+  messageId   String   @unique
+  message     DiscussionMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  approvedBy  String?
+  timestamp   DateTime @default(now())
+}
+
+model ProjectTermin {
+  id            String    @id @default(uuid())
+  projectId     String    @map("project_id")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  terminNumber  Int       @map("termin_number")
+  terminLabel   String?   @map("termin_label")
+  percentage    Float?
+  nilaiTermin   Float     @default(0) @map("nilai_termin")
+  retensiPct    Float?    @default(5.0) @map("retensi_pct")
+  retensiAmount Float?    @default(0) @map("retensi_amount")
+  nettoCair     Float?    @default(0) @map("netto_cair")
+  submittedDate DateTime? @map("submitted_date")
+  approvedDate  DateTime? @map("approved_date")
+  paidDate      DateTime? @map("paid_date")
+  status        String    @default("draft") @map("status") // draft | submitted | approved | paid
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@unique([projectId, terminNumber])
+  @@map("project_termins")
+}
+
+model ProjectDivision {
+  id           String                 @id @default(uuid())
+  projectId    String                 @map("project_id")
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  divisionName String                 @map("division_name")
+  bobot        Float                  @default(0.0)
+  sortOrder    Int                    @default(0) @map("sort_order")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  details      ProjectProgressDetail[]
+
+  @@map("project_divisions")
+}
+
+model ProjectWeeklyProgress {
+  id           String                 @id @default(uuid())
+  projectId    String                 @map("project_id")
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  weekNumber   Int                    @map("week_number")
+  weekLabel    String?                @map("week_label")
+  periodStart  DateTime               @map("period_start")
+  periodEnd    DateTime               @map("period_end")
+  reportedBy   String?                @map("reported_by")
+  user         User?                  @relation(fields: [reportedBy], references: [id], onDelete: SetNull)
+  notes        String?
+  createdAt    DateTime               @default(now()) @map("created_at")
+  details      ProjectProgressDetail[]
+
+  @@unique([projectId, weekNumber])
+  @@map("project_weekly_progress")
+}
+
+model ProjectProgressDetail {
+  id               String                @id @default(uuid())
+  weeklyProgressId String                @map("weekly_progress_id")
+  weeklyProgress   ProjectWeeklyProgress @relation(fields: [weeklyProgressId], references: [id], onDelete: Cascade)
+  projectId        String                @map("project_id")
+  project          Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  divisionId       String                @map("division_id")
+  division         ProjectDivision       @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  progressPlan     Float                 @default(0.0) @map("progress_plan")
+  progressActual   Float                 @default(0.0) @map("progress_actual")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@map("project_progress_details")
+}
+
+model ProjectTask {
+  id            String    @id @default(uuid())
+  projectId     String    @map("project_id")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  division      String?   // sipil | mep | arsitektur | finishing | persiapan | other
+  status        String    @default("todo") // todo | in_progress | review | done
+  priority      String    @default("medium") // high | medium | low
+  assignedTo    String?   @map("assigned_to")
+  assignedUser  User?     @relation("ProjectTaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  assignedName  String?   @map("assigned_name")
+  dueDate       DateTime? @map("due_date")
+  completedDate DateTime? @map("completed_date")
+  createdBy     String?   @map("created_by")
+  creator       User?     @relation("ProjectTaskCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  @@map("project_tasks")
+}
+
+model ProjectFolder {
+  id          String            @id @default(uuid())
+  projectId   String            @map("project_id")
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  folderName  String            @map("folder_name")
+  folderColor String            @default("blue") @map("folder_color") // blue | amber | green | purple | red | gray
+  sortOrder   Int               @default(0) @map("sort_order")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  documents   ProjectDocument[]
+
+  @@map("project_folders")
+}
+
+model ProjectDocument {
+  id           String         @id @default(uuid())
+  projectId    String         @map("project_id")
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  folderId     String?        @map("folder_id")
+  folder       ProjectFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  fileName     String         @map("file_name")
+  fileType     String?        @map("file_type") // pdf | xlsx | docx | dwg | jpg | png | other
+  fileSizeKb   Int            @default(0) @map("file_size_kb")
+  fileUrl      String         @map("file_url")
+  uploadedBy   String?        @map("uploaded_by")
+  uploader     User?          @relation("DocUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  uploadedName String?        @map("uploaded_name")
+  description  String?
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@map("project_documents")
+}
+
+model CalendarEvent {
+  id          String    @id @default(uuid())
+  projectId   String?   @map("project_id")
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  eventType   String    @default("meeting") @map("event_type") // meeting | site_visit | inspection | other
+  eventDate   DateTime  @map("event_date")
+  eventTime   String?   @map("event_time")
+  endDate     DateTime? @map("end_date")
+  createdBy   String?   @map("created_by")
+  creator     User?     @relation("CalendarEventCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("calendar_events")
+}
+
